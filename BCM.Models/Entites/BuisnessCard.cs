@@ -13,7 +13,7 @@ namespace BCM.Models.Entites
         public int Id { get; set; }
 
         [Required]
-        public string Name { get; set; } = default!;
+        public string Name { get; set; }
 
         [Required]
         public Gender Gender { get; set; }
@@ -22,14 +22,18 @@ namespace BCM.Models.Entites
         public DateTime BirthDate { get; set; }
 
         [Required]
-        public string Email { get; set; } = default!;
+        public string Email { get; set; } 
 
         [Required]
-        public string Phone { get; set; } = default!;
+        public string Phone { get; set; } 
 
         [Required]
-        public string Address { get; set; } = default!;
+        public string Address { get; set; } 
 
-        public string? ImageBase64 { get; set; } = default!;
+        public string? ImageBase64 { get; set; } 
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; } 
+
     }
 }

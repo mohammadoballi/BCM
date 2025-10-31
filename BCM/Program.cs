@@ -1,4 +1,5 @@
 ﻿using BCM.Managment.Auth.Manager;
+using BCM.Managment.Card.Manager;
 using BCM.Managment.Token.Manager;
 using BCM.Models.Data;
 using BCM.Models.Seeder;
@@ -38,6 +39,7 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddScoped<IAuthManager, AuthManager>();
 builder.Services.AddScoped<ITokenManager, TokenManager>();
+builder.Services.AddScoped<ICardManager, CardManager>();
 
 builder.Services.AddCors(options =>
 {

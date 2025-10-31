@@ -24,6 +24,11 @@ namespace BCM.Models.Data
             .Property(u => u.Gender)
             .HasConversion<int>();
 
+            modelBuilder.Entity<BusinessCard>()
+            .Property(b => b.CreatedAt)
+            .HasDefaultValueSql("GETUTCDATE()")   
+            .ValueGeneratedOnAdd();
+
         }
     }
 }
