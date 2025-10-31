@@ -10,4 +10,13 @@
     <ProjectReference Include="..\BCM.Models\BCM.Models.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Card\Manager\" />
+    <Folder Include="Card\DTOs\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+  </ItemGroup>
+
 </Project>
