@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="BCM.Managment/BCM.Managment.csproj" />
+  <Project Path="BCM.Models/BCM.Models.csproj" />
   <Project Path="BCM/BCM.csproj" />
 </Solution>
