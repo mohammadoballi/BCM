@@ -114,7 +114,7 @@ namespace BCM.Controllers
         }
 
 
-        [HttpPut]
+        [HttpDelete]
         [Route("Delete/{CardId}")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
         public async Task<IActionResult> DeleteCard(int CardId)
@@ -177,6 +177,52 @@ namespace BCM.Controllers
         }
 
 
+        [HttpGet]
+        [Route("GenerateQrCode/{CardId}")]
+        [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
+        public async Task<IActionResult> GenerateQrCode(int CardId)
+        {
+            var climes = HttpContext.User.Claims;
+            var role = climes.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+
+            if (role != "Administrator")
+                return Unauthorized(DefaultResponse<bool>.FailureResponse(
+                 message_en: "You do not have permission to perform this action.",
+                 message_ar: "ليس لديك صلاحية لتنفيذ هذا الإجراء."
+             ));
+
+            var result = await _cardManager.GenerateQrCodeForCard(CardId);
+            if (result.IsSuccess)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+
+        }
+
+
+        [HttpPost]
+        [Route("ImportQrCode")]
+        public async Task<IActionResult> ImportQrCode(IFormFile file)
+        {
+            var climes = HttpContext.User.Claims;
+            var role = climes.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+
+            if (role != "Administrator")
+                return Unauthorized(DefaultResponse<bool>.FailureResponse(
+                 message_en: "You do not have permission to perform this action.",
+                 message_ar: "ليس لديك صلاحية لتنفيذ هذا الإجراء."
+             ));
+
+            var result = await _cardManager.CreateCardFromQrCode(file);
+            if (result.IsSuccess)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+        }
 
     }
 }

@@ -1,4 +1,4 @@
-﻿using BCM.Managment.Base;
+using BCM.Managment.Base;
 using BCM.Managment.Base.DTOs;
 using BCM.Managment.Card.DTOs;
 using BCM.Models.Data;
@@ -14,7 +14,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
+using ZXing;
+using ZXing.QrCode;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using ZXing.Common;
+using System.IO;
+using ZXing.CoreCompat.System.Drawing;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace BCM.Managment.Card.Manager
 {
@@ -81,7 +88,7 @@ namespace BCM.Managment.Card.Manager
 
         }
 
-        public async Task<DefaultResponse<IEnumerable<CardMinimumResponse>>> GetAll(CardFilterRequest request)
+        public async Task<DefaultResponse<IEnumerable<CardDetailsResponse>>> GetAll(CardFilterRequest request)
         {
             try
             {
@@ -124,19 +131,23 @@ namespace BCM.Managment.Card.Manager
 
                 if (result.Any())
                 {
-                    var mappedResult = result.Select(c => new CardMinimumResponse
+                    var mappedResult = result.Select(c => new CardDetailsResponse
                     {
                         Id = c.Id,
                         Name = c.Name,
                         Gender = c.Gender.ToDisplayString(),
-                        Phone = c.Phone
+                        Phone = c.Phone,
+                        Address = c.Address,
+                        BirthDate = c.BirthDate,
+                        Email = c.Email,
+                        Image = c.ImageBase64
                     });
 
-                    return DefaultResponse<IEnumerable<CardMinimumResponse>>.SuccessResponse(mappedResult, pagination: pagination);
+                    return DefaultResponse<IEnumerable<CardDetailsResponse>>.SuccessResponse(mappedResult, pagination: pagination);
                 }
                 else
                 {
-                    return DefaultResponse<IEnumerable<CardMinimumResponse>>.SuccessResponse(
+                    return DefaultResponse<IEnumerable<CardDetailsResponse>>.SuccessResponse(
                         null,
                         pagination: pagination,
                         message_ar: "لم يتم العثور على بطاقات تطابق معايير البحث.",
@@ -146,7 +157,7 @@ namespace BCM.Managment.Card.Manager
             }
             catch (Exception ex)
             {
-                return DefaultResponse<IEnumerable<CardMinimumResponse>>.FailureResponse(
+                return DefaultResponse<IEnumerable<CardDetailsResponse>>.FailureResponse(
                     "An error occurred while retrieving cards: " + ex.Message,
                     "حدث خطأ أثناء استرجاع البطاقات: " + ex.Message
                 );
@@ -230,66 +241,108 @@ namespace BCM.Managment.Card.Manager
             {
                 var cards = new List<BusinessCard>();
                 int skipped = 0;
-                var extension = Path.GetExtension(file.FileName).ToLower();
 
-                using var stream = file.OpenReadStream();
+                if (file == null || file.Length == 0)
+                    return DefaultResponse<bool>.FailureResponse("File is empty", "الملف فارغ");
+
+                var extension = Path.GetExtension(file.FileName).ToLower();
 
                 if (extension == ".xlsx")
                 {
-                    using var workbook = new XLWorkbook(stream);
-                    var worksheet = workbook.Worksheets.First();
-                    var rows = worksheet.RangeUsed().RowsUsed().Skip(1);
+                    using var mem = new MemoryStream();
+                    await file.CopyToAsync(mem);
+                    mem.Position = 0;
 
-                    foreach (var row in rows)
+                    byte[] header = new byte[2];
+                    mem.Read(header, 0, 2);
+                    mem.Position = 0;
+
+                    bool isExcel = header[0] == 0x50 && header[1] == 0x4B; 
+
+                    if (!isExcel)
                     {
-                        var name = row.Cell(1).GetValue<string>()?.Trim();
-                        var email = row.Cell(2).GetValue<string>()?.Trim();
-                        var phone = row.Cell(3).GetValue<string>()?.Trim();
-                        var genderStr = row.Cell(4).GetValue<string>()?.Trim();
-                        var address = row.Cell(5).GetValue<string>()?.Trim();
-                        var birthDateStr = row.Cell(6).GetValue<string>()?.Trim();
-                        var imageBase64 = row.Cell(7).GetValue<string>()?.Trim();
+                        return DefaultResponse<bool>.FailureResponse(
+                            "The uploaded file is not a valid Excel .xlsx file.",
+                            "الملف المرفوع ليس ملف Excel صالح (.xlsx)."
+                        );
+                    }
 
-                        // Skip if required fields missing or invalid
-                        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) ||
-                            string.IsNullOrEmpty(phone) || string.IsNullOrEmpty(genderStr) ||
-                            string.IsNullOrEmpty(address) || string.IsNullOrEmpty(birthDateStr) ||
-                            !DateTime.TryParse(birthDateStr, out DateTime birthDate))
+                    try
+                    {
+                        using var workbook = new XLWorkbook(mem);
+                        var worksheet = workbook.Worksheets.FirstOrDefault();
+
+                        if (worksheet == null)
+                            return DefaultResponse<bool>.FailureResponse("No worksheets found", "لم يتم العثور على أوراق عمل في الملف");
+
+                        var rows = worksheet.RangeUsed()?.RowsUsed()?.Skip(1);
+                        if (rows == null || !rows.Any())
+                            return DefaultResponse<bool>.FailureResponse("No data found", "لم يتم العثور على بيانات في الملف");
+
+                        foreach (var row in rows)
                         {
-                            skipped++;
-                            continue;
+                            var name = row.Cell(1).GetValue<string>()?.Trim();
+                            var email = row.Cell(2).GetValue<string>()?.Trim();
+                            var phone = row.Cell(3).GetValue<string>()?.Trim();
+                            var genderStr = row.Cell(4).GetValue<string>()?.Trim();
+                            var address = row.Cell(5).GetValue<string>()?.Trim();
+                            var birthDateStr = row.Cell(6).GetValue<string>()?.Trim();
+                            var imageBase64 = row.Cell(7).GetValue<string>()?.Trim();
+
+                            // Validation
+                            if (string.IsNullOrWhiteSpace(name) ||
+                                string.IsNullOrWhiteSpace(email) ||
+                                string.IsNullOrWhiteSpace(phone) ||
+                                string.IsNullOrWhiteSpace(genderStr) ||
+                                string.IsNullOrWhiteSpace(address) ||
+                                string.IsNullOrWhiteSpace(birthDateStr) ||
+                                !DateTime.TryParse(birthDateStr, out DateTime birthDate))
+                            {
+                                skipped++;
+                                continue;
+                            }
+
+                            Enum.TryParse(genderStr, true, out Gender gender);
+
+                            cards.Add(new BusinessCard
+                            {
+                                Name = name,
+                                Email = email,
+                                Phone = phone,
+                                Gender = gender,
+                                CreatedAt = DateTime.UtcNow,
+                                Address = address,
+                                ImageBase64 = imageBase64 ?? string.Empty,
+                                BirthDate = birthDate
+                            });
                         }
-
-                        Enum.TryParse(genderStr, out Gender gender);
-
-                        cards.Add(new BusinessCard
-                        {
-                            Name = name,
-                            Email = email,
-                            Phone = phone,
-                            Gender = gender,
-                            CreatedAt = DateTime.UtcNow,
-                            Address = address,
-                            ImageBase64 = imageBase64 ?? "",
-                            BirthDate = birthDate
-                        });
+                    }
+             
+                    catch (Exception ex)
+                    {
+                        return DefaultResponse<bool>.FailureResponse(
+                            "Corrupted Excel file: " + ex.Message,
+                            "الملف تالف أو غير صالح كملف Excel: " + ex.Message
+                        );
                     }
                 }
+
                 else if (extension == ".csv")
                 {
+                    using var stream = file.OpenReadStream();
                     using var reader = new StreamReader(stream);
                     using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
                     var records = csv.GetRecords<dynamic>();
 
                     foreach (var record in records)
                     {
-                        string name = record.Name?.Trim();
-                        string email = record.Email?.Trim();
-                        string phone = record.Phone?.Trim();
-                        string genderStr = record.Gender?.Trim();
-                        string address = record.Address?.Trim();
-                        string birthDateStr = record.BirthDate?.Trim();
-                        string imageBase64 = record.ImageBase64?.Trim();
+                        string name = record.name?.Trim();
+                        string email = record.email?.Trim();
+                        string phone = record.phone?.Trim();
+                        string genderStr = record.gender?.Trim();
+                        string address = record.address?.Trim();
+                        string birthDateStr = record.birthDate?.Trim();
+                        string imageBase64 = record.image?.Trim();
 
                         if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) ||
                             string.IsNullOrEmpty(phone) || string.IsNullOrEmpty(genderStr) ||
@@ -317,39 +370,70 @@ namespace BCM.Managment.Card.Manager
                 }
                 else if (extension == ".xml")
                 {
-                    var doc = XDocument.Load(stream);
-                    foreach (var x in doc.Root.Elements("Card"))
+                    try
                     {
-                        var name = x.Element("Name")?.Value?.Trim();
-                        var email = x.Element("Email")?.Value?.Trim();
-                        var phone = x.Element("Phone")?.Value?.Trim();
-                        var genderStr = x.Element("Gender")?.Value?.Trim();
-                        var address = x.Element("Address")?.Value?.Trim();
-                        var birthDateStr = x.Element("BirthDate")?.Value?.Trim();
-                        var imageBase64 = x.Element("ImageBase64")?.Value?.Trim();
-
-                        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) ||
-                            string.IsNullOrEmpty(phone) || string.IsNullOrEmpty(genderStr) ||
-                            string.IsNullOrEmpty(address) || string.IsNullOrEmpty(birthDateStr) ||
-                            !DateTime.TryParse(birthDateStr, out DateTime birthDate))
+                        using var stream = file.OpenReadStream();
+                        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                        var xmlContent = await reader.ReadToEndAsync();
+                        
+                        if (string.IsNullOrWhiteSpace(xmlContent))
                         {
-                            skipped++;
-                            continue;
+                            return DefaultResponse<bool>.FailureResponse(
+                                "XML file is empty",
+                                "ملف XML فارغ"
+                            );
                         }
 
-                        Enum.TryParse(genderStr, out Gender gender);
-
-                        cards.Add(new BusinessCard
+                        var doc = XDocument.Parse(xmlContent);
+                        
+                        if (doc.Root == null)
                         {
-                            Name = name,
-                            Email = email,
-                            Phone = phone,
-                            Gender = gender,
-                            CreatedAt = DateTime.UtcNow,
-                            Address = address,
-                            ImageBase64 = imageBase64 ?? "",
-                            BirthDate = birthDate
-                        });
+                            return DefaultResponse<bool>.FailureResponse(
+                                "XML file has no root element",
+                                "ملف XML لا يحتوي على عنصر جذر"
+                            );
+                        }
+
+                        foreach (var x in doc.Root.Elements("Card"))
+                        {
+                            var name = x.Element("Name")?.Value?.Trim();
+                            var email = x.Element("Email")?.Value?.Trim();
+                            var phone = x.Element("Phone")?.Value?.Trim();
+                            var genderStr = x.Element("Gender")?.Value?.Trim();
+                            var address = x.Element("Address")?.Value?.Trim();
+                            var birthDateStr = x.Element("BirthDate")?.Value?.Trim();
+                            var imageBase64 = x.Element("ImageBase64")?.Value?.Trim();
+
+                            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) ||
+                                string.IsNullOrEmpty(phone) || string.IsNullOrEmpty(genderStr) ||
+                                string.IsNullOrEmpty(address) || string.IsNullOrEmpty(birthDateStr) ||
+                                !DateTime.TryParse(birthDateStr, out DateTime birthDate))
+                            {
+                                skipped++;
+                                continue;
+                            }
+
+                            Enum.TryParse(genderStr, out Gender gender);
+
+                            cards.Add(new BusinessCard
+                            {
+                                Name = name,
+                                Email = email,
+                                Phone = phone,
+                                Gender = gender,
+                                CreatedAt = DateTime.UtcNow,
+                                Address = address,
+                                ImageBase64 = imageBase64 ?? "",
+                                BirthDate = birthDate
+                            });
+                        }
+                    }
+                    catch (System.Xml.XmlException xmlEx)
+                    {
+                        return DefaultResponse<bool>.FailureResponse(
+                            $"Invalid XML format: {xmlEx.Message}",
+                            $"تنسيق XML غير صالح: {xmlEx.Message}"
+                        );
                     }
                 }
                 else
@@ -387,7 +471,154 @@ namespace BCM.Managment.Card.Manager
             }
         }
 
+        public async Task<DefaultResponse<string>> GenerateQrCodeForCard(int id)
+        {
+            try
+            {
+                var card = await _context.BusinessCard.FindAsync(id);
+                if (card == null)
+                    return DefaultResponse<string>.FailureResponse("Card not found", "البطاقة غير موجودة");
 
+                string qrContent = $"Name: {card.Name}\nEmail: {card.Email}\nPhone: {card.Phone}\nAddress: {card.Address}";
+
+                var writer = new BarcodeWriterPixelData
+                {
+                    Format = BarcodeFormat.QR_CODE,
+                    Options = new QrCodeEncodingOptions
+                    {
+                        Height = 250,
+                        Width = 250,
+                        Margin = 1
+                    }
+                };
+
+                var pixelData = writer.Write(qrContent);
+
+                using var bitmap = new Bitmap(pixelData.Width, pixelData.Height, PixelFormat.Format32bppRgb);
+                var bitmapData = bitmap.LockBits(new Rectangle(0, 0, pixelData.Width, pixelData.Height),
+                                                 ImageLockMode.WriteOnly, bitmap.PixelFormat);
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(pixelData.Pixels, 0, bitmapData.Scan0, pixelData.Pixels.Length);
+                }
+                finally
+                {
+                    bitmap.UnlockBits(bitmapData);
+                }
+
+                using var ms = new MemoryStream();
+                bitmap.Save(ms, ImageFormat.Png);
+
+                string base64Qr = Convert.ToBase64String(ms.ToArray());
+
+                return DefaultResponse<string>.SuccessResponse(base64Qr, "QR code generated successfully", "تم إنشاء رمز الاستجابة السريعة بنجاح");
+            }
+            catch (Exception ex)
+            {
+                return DefaultResponse<string>.FailureResponse(
+                    "An error occurred while generating QR code: " + ex.Message,
+                    "حدث خطأ أثناء إنشاء رمز الاستجابة السريعة: " + ex.Message
+                );
+            }
+        }
+
+
+
+        public async Task<DefaultResponse<CardDetailsResponse>> CreateCardFromQrCode(IFormFile qrImageFile)
+        {
+            try
+            {
+                if (qrImageFile == null || qrImageFile.Length == 0)
+                    return DefaultResponse<CardDetailsResponse>.FailureResponse("QR code image is missing", "صورة رمز QR مفقودة");
+
+                using var ms = new MemoryStream();
+                await qrImageFile.CopyToAsync(ms);
+                using var bitmap = new Bitmap(ms);
+
+                var reader = new BarcodeReaderGeneric
+                {
+                    AutoRotate = true,
+                    TryInverted = true,
+                    Options = new DecodingOptions
+                    {
+                        TryHarder = true,
+                        PossibleFormats = new List<BarcodeFormat> { BarcodeFormat.QR_CODE }
+                    }
+                };
+
+                var result = reader.Decode(bitmap);
+
+                if (result == null)
+                    return DefaultResponse<CardDetailsResponse>.FailureResponse("Unable to decode the QR code", "تعذر قراءة رمز QR");
+
+                var qrText = result.Text;
+                var data = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+
+
+                foreach (var line in qrText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    Console.WriteLine($"Processing line: '{line}'");
+                    var colonIndex = line.IndexOf(':');
+                    if (colonIndex > 0)
+                    {
+                        var key = line.Substring(0, colonIndex).Trim();
+                        var value = line.Substring(colonIndex + 1).Trim();
+                        data[key] = value;
+                        Console.WriteLine($"Added: {key} = {value}");
+                    }
+                }
+
+                Console.WriteLine($"Total keys parsed: {data.Count}");
+
+                if (!data.ContainsKey("Name") || !data.ContainsKey("Email") || !data.ContainsKey("Phone"))
+                    return DefaultResponse<CardDetailsResponse>.FailureResponse(
+                        $"QR code missing required fields. Found: {string.Join(", ", data.Keys)}. Raw text: {qrText}",
+                        $"رمز QR يفتقد الحقول المطلوبة. تم العثور على: {string.Join(", ", data.Keys)}"
+                    );
+
+                var card = new BusinessCard
+                {
+                    Name = data["Name"],
+                    Email = data["Email"],
+                    Phone = data["Phone"],
+                    Address = data.ContainsKey("Address") ? data["Address"] : null,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                if (data.ContainsKey("BirthDate") && DateTime.TryParse(data["BirthDate"], out var birthDate))
+                    card.BirthDate = birthDate;
+
+                if (data.ContainsKey("Gender") && Enum.TryParse<Gender>(data["Gender"], true, out var gender))
+                    card.Gender = gender;
+
+                await _context.BusinessCard.AddAsync(card);
+                await _context.SaveChangesAsync();
+
+                var response = new CardDetailsResponse
+                {
+                    Id = card.Id,
+                    Name = card.Name,
+                    Email = card.Email,
+                    Phone = card.Phone,
+                    Address = card.Address,
+                    BirthDate = card.BirthDate,
+                    Gender = card.Gender.ToDisplayString(),
+                    Image = card.ImageBase64
+                };
+
+                return DefaultResponse<CardDetailsResponse>.SuccessResponse(response,
+                    "Card created from QR code successfully",
+                    "تم إنشاء البطاقة من رمز QR بنجاح");
+            }
+            catch (Exception ex)
+            {
+                return DefaultResponse<CardDetailsResponse>.FailureResponse(
+                    $"An error occurred while reading QR code: {ex.Message}",
+                    $"حدث خطأ أثناء قراءة رمز QR: {ex.Message}"
+                );
+            }
+        }
 
     }
 

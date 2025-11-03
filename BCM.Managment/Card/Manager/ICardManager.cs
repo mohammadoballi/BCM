@@ -10,11 +10,13 @@ namespace BCM.Managment.Card.Manager
 {
     public interface ICardManager
     {
-        Task<DefaultResponse<IEnumerable<CardMinimumResponse>>> GetAll(CardFilterRequest request);
+        Task<DefaultResponse<IEnumerable<CardDetailsResponse>>> GetAll(CardFilterRequest request);
         Task<DefaultResponse<CardDetailsResponse>> GetById(int id);
         Task<DefaultResponse<bool>> Create(CardCreateRequest card);
         Task<DefaultResponse<bool>> Update(int id, CardUpdateRequest card);
         Task<DefaultResponse<bool>> Delete(int id);
         Task<DefaultResponse<bool>> ImportFile(IFormFile File);
+        Task<DefaultResponse<string>> GenerateQrCodeForCard(int id);
+        Task<DefaultResponse<CardDetailsResponse>> CreateCardFromQrCode(IFormFile qrImageFile);
     }
 }
