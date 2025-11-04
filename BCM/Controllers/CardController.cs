@@ -1,4 +1,4 @@
-﻿using BCM.Managment.Base.DTOs;
+using BCM.Managment.Base.DTOs;
 using BCM.Managment.Card.DTOs;
 using BCM.Managment.Card.Manager;
 using BCM.Models.Entites;
@@ -14,8 +14,11 @@ namespace BCM.Controllers
     [ApiController]
     public class CardController(ICardManager _cardManager) : ControllerBase
     {
-
-
+        /// <summary>
+        /// Retrieves all business cards with optional filtering. Requires Administrator role.
+        /// </summary>
+        /// <param name="request">Filter criteria for querying cards.</param>
+        /// <returns>An action result containing a list of business cards.</returns>
         [HttpGet]
         [Route("GetAllCards")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -40,6 +43,11 @@ namespace BCM.Controllers
 
         }
 
+        /// <summary>
+        /// Retrieves a specific business card by its ID. Requires Administrator role.
+        /// </summary>
+        /// <param name="CardId">The unique identifier of the card.</param>
+        /// <returns>An action result containing the card details.</returns>
         [HttpGet]
         [Route("GetCardById/{CardId}")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -64,7 +72,11 @@ namespace BCM.Controllers
 
         }
 
-
+        /// <summary>
+        /// Creates a new business card. Requires Administrator role.
+        /// </summary>
+        /// <param name="request">The card creation request containing card details.</param>
+        /// <returns>An action result indicating success or failure of the operation.</returns>
         [HttpPost]
         [Route("Create")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -88,6 +100,12 @@ namespace BCM.Controllers
             return BadRequest(result);
         }
 
+        /// <summary>
+        /// Updates an existing business card. Requires Administrator role.
+        /// </summary>
+        /// <param name="CardId">The unique identifier of the card to update.</param>
+        /// <param name="request">The card update request containing updated details.</param>
+        /// <returns>An action result indicating success or failure of the operation.</returns>
         [HttpPut]
         [Route("update/{CardId}")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -113,7 +131,11 @@ namespace BCM.Controllers
 
         }
 
-
+        /// <summary>
+        /// Deletes a business card by its ID. Requires Administrator role.
+        /// </summary>
+        /// <param name="CardId">The unique identifier of the card to delete.</param>
+        /// <returns>An action result indicating success or failure of the operation.</returns>
         [HttpDelete]
         [Route("Delete/{CardId}")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -139,6 +161,11 @@ namespace BCM.Controllers
 
         }
 
+        /// <summary>
+        /// Imports business cards from a file (XLSX, CSV, or XML). Requires Administrator role.
+        /// </summary>
+        /// <param name="file">The file containing card data to import.</param>
+        /// <returns>An action result indicating success or failure of the import operation.</returns>
         [HttpPost]
         [Route("UploadFile")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -176,7 +203,11 @@ namespace BCM.Controllers
             return BadRequest(result);
         }
 
-
+        /// <summary>
+        /// Generates a QR code for a specific business card. Requires Administrator role.
+        /// </summary>
+        /// <param name="CardId">The unique identifier of the card.</param>
+        /// <returns>An action result containing the generated QR code.</returns>
         [HttpGet]
         [Route("GenerateQrCode/{CardId}")]
         [ProducesDefaultResponseType(typeof(DefaultResponse<List<BusinessCard>>))]
@@ -201,7 +232,11 @@ namespace BCM.Controllers
 
         }
 
-
+        /// <summary>
+        /// Creates a business card by scanning and processing a QR code image. Requires Administrator role.
+        /// </summary>
+        /// <param name="file">The QR code image file to process.</param>
+        /// <returns>An action result containing the created card details.</returns>
         [HttpPost]
         [Route("ImportQrCode")]
         public async Task<IActionResult> ImportQrCode(IFormFile file)

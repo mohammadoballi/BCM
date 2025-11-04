@@ -1,4 +1,4 @@
-﻿using BCM.Managment.Auth.DTOs;
+using BCM.Managment.Auth.DTOs;
 using BCM.Managment.Auth.Manager;
 using BCM.Managment.Base.DTOs;
 using Microsoft.AspNetCore.Http;
@@ -11,7 +11,11 @@ namespace BCM.Controllers
     [ApiController]
     public class AuthController(IAuthManager _authManager) : ControllerBase
     {
-
+        /// <summary>
+        /// Authenticates a user and returns a login token.
+        /// </summary>
+        /// <param name="request">The login request containing user credentials.</param>
+        /// <returns>An action result with the authentication response.</returns>
         [HttpPost]
         [Route("Login")]
         public async Task<IActionResult> Login([FromBody] AuthLoginRequest request)

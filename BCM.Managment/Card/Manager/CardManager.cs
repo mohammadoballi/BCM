@@ -6,22 +6,23 @@ using BCM.Models.Entites;
 using BCM.Models.Enums;
 using ClosedXML.Excel;
 using CsvHelper;
+using CsvHelper.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Xml.Linq;
 using ZXing;
+using ZXing.Common;
+using ZXing.CoreCompat.System.Drawing;
 using ZXing.QrCode;
 using static System.Runtime.InteropServices.JavaScript.JSType;
-using ZXing.Common;
-using System.IO;
-using ZXing.CoreCompat.System.Drawing;
-using System.Drawing;
-using System.Drawing.Imaging;
 
 namespace BCM.Managment.Card.Manager
 {
@@ -43,6 +44,7 @@ namespace BCM.Managment.Card.Manager
                 {
                     Name = card.Name,
                     Address = card.Address,
+                    Gender = (Gender)card.Gender,
                     BirthDate = card.BirthDate,
                     Email = card.Email,
                     Phone = card.Phone
@@ -182,7 +184,8 @@ namespace BCM.Managment.Card.Manager
                     BirthDate = card.BirthDate,
                     Email = card.Email,
                     Id = card.Id,
-                    Image = card.ImageBase64
+                    Image = card.ImageBase64,
+                    Gender = card.Gender.ToDisplayString()
                 };
                 return DefaultResponse<CardDetailsResponse>.SuccessResponse(mappedCard);
             }
@@ -282,11 +285,11 @@ namespace BCM.Managment.Card.Manager
                         foreach (var row in rows)
                         {
                             var name = row.Cell(1).GetValue<string>()?.Trim();
-                            var email = row.Cell(2).GetValue<string>()?.Trim();
-                            var phone = row.Cell(3).GetValue<string>()?.Trim();
-                            var genderStr = row.Cell(4).GetValue<string>()?.Trim();
-                            var address = row.Cell(5).GetValue<string>()?.Trim();
-                            var birthDateStr = row.Cell(6).GetValue<string>()?.Trim();
+                            var genderStr = row.Cell(2).GetValue<string>()?.Trim();
+                            var email = row.Cell(3).GetValue<string>()?.Trim();
+                            var phone = row.Cell(4).GetValue<string>()?.Trim();
+                            var birthDateStr = row.Cell(5).GetValue<string>()?.Trim();
+                            var address = row.Cell(6).GetValue<string>()?.Trim();
                             var imageBase64 = row.Cell(7).GetValue<string>()?.Trim();
 
                             // Validation
@@ -331,8 +334,16 @@ namespace BCM.Managment.Card.Manager
                 {
                     using var stream = file.OpenReadStream();
                     using var reader = new StreamReader(stream);
-                    using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-                    var records = csv.GetRecords<dynamic>();
+                    var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+                    {
+                        PrepareHeaderForMatch = args => args.Header.ToLower(),
+                        MissingFieldFound = null,
+                        HeaderValidated = null, 
+                        TrimOptions = TrimOptions.Trim,
+                    };
+
+                    using var csv = new CsvReader(reader, config);
+                    var records = csv.GetRecords<ImportXlsxFileDTO>().ToList();
 
                     foreach (var record in records)
                     {
@@ -342,7 +353,7 @@ namespace BCM.Managment.Card.Manager
                         string genderStr = record.gender?.Trim();
                         string address = record.address?.Trim();
                         string birthDateStr = record.birthDate?.Trim();
-                        string imageBase64 = record.image?.Trim();
+                        string imageBase64 = record?.image?.Trim();
 
                         if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) ||
                             string.IsNullOrEmpty(phone) || string.IsNullOrEmpty(genderStr) ||
@@ -397,11 +408,11 @@ namespace BCM.Managment.Card.Manager
                         foreach (var x in doc.Root.Elements("Card"))
                         {
                             var name = x.Element("Name")?.Value?.Trim();
+                            var genderStr = x.Element("Gender")?.Value?.Trim();
                             var email = x.Element("Email")?.Value?.Trim();
                             var phone = x.Element("Phone")?.Value?.Trim();
-                            var genderStr = x.Element("Gender")?.Value?.Trim();
-                            var address = x.Element("Address")?.Value?.Trim();
                             var birthDateStr = x.Element("BirthDate")?.Value?.Trim();
+                            var address = x.Element("Address")?.Value?.Trim();
                             var imageBase64 = x.Element("ImageBase64")?.Value?.Trim();
 
                             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) ||
@@ -450,7 +461,6 @@ namespace BCM.Managment.Card.Manager
                         "لم يتم العثور على بطاقات صالحة في الملف"
                     );
 
-                // Save to database
                 await _context.BusinessCard.AddRangeAsync(cards);
                 await _context.SaveChangesAsync();
 

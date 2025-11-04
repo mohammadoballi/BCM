@@ -11,8 +11,11 @@ namespace BCM.Managment.Card.DTOs
     {
         [Required]
         public string Name { get; set; } 
+        
         [Required]
         public Gender Gender { get; set; }
+
+
         [Required]
 
         public DateTime BirthDate { get; set; }
