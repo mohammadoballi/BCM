@@ -2,4 +2,5 @@
   <Project Path="BCM.Managment/BCM.Managment.csproj" />
   <Project Path="BCM.Models/BCM.Models.csproj" />
   <Project Path="BCM/BCM.csproj" />
+  <Project Path="BCM.Tests/BCM.Tests.csproj" />
 </Solution>
